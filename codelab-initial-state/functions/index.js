@@ -34,9 +34,9 @@ exports.calculateCart = functions
         let itemCount = 0;
 
         const cartRef = db.collection("carts").doc(context.params.cartId);
+        const itemsSnap = await cartRef.collection("items").get();
 
         // ADD LINES FROM HERE
-        const itemsSnap = await cartRef.collection("items").get();
 
         itemsSnap.docs.forEach(item => {
           const itemData = item.data();

@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 const fs = require('fs');
 const path = require("path");
 
@@ -57,10 +58,13 @@ before(async () => {
   });
 });
 
-after(() => {
-  firebase.apps().forEach(app => app.delete());
-});
+// after(() => {
+//   firebase.apps().forEach(app => app.delete());
+// });
 
+after(async () => {
+  await Promise.all(firebase.apps().map(app => app.delete()));
+});
 
 // Unit test the security rules
 describe("shopping carts", () => {
@@ -79,9 +83,19 @@ describe("shopping carts", () => {
     projectId: TEST_FIREBASE_PROJECT_ID
   }).firestore();
 
-  after(async () => {
-    await resetData(admin, TEST_FIREBASE_PROJECT_ID);
+  // after(async () => {
+  //   await resetData(admin, TEST_FIREBASE_PROJECT_ID);
+  // });
+  
+  after(async function () {
+    this.timeout(10000);
+    try {
+      await resetData(admin, TEST_FIREBASE_PROJECT_ID);
+    } catch (err) {
+      console.error("Failed to reset data in 'shopping cart items':", err);
+    }
   });
+  
 
   it('can be created and updated by the cart owner', async () => {
     // Alice can create her own cart
@@ -122,7 +136,7 @@ describe("shopping carts", () => {
   });
 });
 
-describe("shopping cart items", async () => {
+describe("shopping cart items", () => {
   const admin = firebase.initializeAdminApp({ 
     projectId: TEST_FIREBASE_PROJECT_ID 
   }).firestore();
@@ -152,9 +166,19 @@ describe("shopping cart items", async () => {
     }
   });
 
-  after(async () => {
-    await resetData(admin, TEST_FIREBASE_PROJECT_ID);
+  // after(async () => {
+  //   await resetData(admin, TEST_FIREBASE_PROJECT_ID);
+  // });
+
+  after(async function () {
+    this.timeout(10000);
+    try {
+      await resetData(admin, TEST_FIREBASE_PROJECT_ID);
+    } catch (err) {
+      console.error("Error in after() cleanup for shopping cart items:", err);
+    }
   });
+  
 
   it("can be read only by the cart owner", async () => {
     // Alice can read items in her own cart
@@ -184,14 +208,25 @@ describe("adding an item to the cart recalculates the cart total. ", () => {
     projectId: REAL_FIREBASE_PROJECT_ID 
   }).firestore();
 
-  after(async () => {
-    await resetData(admin, REAL_FIREBASE_PROJECT_ID);
-  });
+  // after(async () => {
+  //   await resetData(admin, REAL_FIREBASE_PROJECT_ID);
+  // });
 
-  it("should sum the cost of their items", async () => {
-    if (REAL_FIREBASE_PROJECT_ID === "changeme") {
-      throw new Error("Please change the REAL_FIREBASE_PROJECT_ID at the top of the test file");
+  after(async function () {
+    this.timeout(20000); // Increase the timeout duration if needed
+    try {
+      await resetData(admin, TEST_FIREBASE_PROJECT_ID);
+    } catch (err) {
+      console.error("Error in after() cleanup:", err);
     }
+  });
+  
+
+  it("should sum the cost of their items", async function () {
+    this.timeout(40000);
+    // if (REAL_FIREBASE_PROJECT_ID === "shoppingapp-niv0415") {
+    //   throw new Error("Please change the REAL_FIREBASE_PROJECT_ID at the top of the test file");
+    // }
 
     const db = firebase
         .initializeAdminApp({ projectId: REAL_FIREBASE_PROJECT_ID })
@@ -203,28 +238,67 @@ describe("adding an item to the cart recalculates the cart total. ", () => {
 
     //  Trigger `calculateCart` by adding items to the cart
     const aliceItemsRef = aliceCartRef.collection("items");
-    await aliceItemsRef.doc("doc1").set({name: "nectarine", price: 2.99});
+    // await aliceItemsRef.doc("doc1").set({name: "nectarine", price: 2.99});
+    // await aliceItemsRef.doc("doc2").set({ name: "grapefruit", price: 6.99 });
+
+    // aliceItemsRef.doc("doc1").set({name: "nectarine", price: 2.99});
+    // aliceItemsRef.doc("doc2").set({ name: "grapefruit", price: 6.99 });
+
+    await aliceItemsRef.doc("doc1").set({ name: "nectarine", price: 2.99 });
     await aliceItemsRef.doc("doc2").set({ name: "grapefruit", price: 6.99 });
 
     // Listen for every update to the cart. Every time an item is added to
     // the cart's subcollection of items, the function updates `totalPrice`
     // and `itemCount` attributes on the cart.
     // Returns a function that can be called to unsubscribe the listener.
-    await new Promise((resolve) => {
-      const unsubscribe = aliceCartRef.onSnapshot(snap => {
-        // If the function worked, these will be cart's final attributes.
-        const expectedCount = 2;
-        const expectedTotal = 9.98;
-  
-        // When the `itemCount`and `totalPrice` match the expectations for the
-        // two items added, the promise resolves, and the test passes.
-        if (snap.exists && snap.data().itemCount === expectedCount && snap.data().totalPrice === expectedTotal) {
-          // Call the function returned by `onSnapshot` to unsubscribe from updates
+
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Timed out waiting for cart update"));
+      }, 40000);
+    
+      const unsubscribe = aliceCartRef.onSnapshot((snap) => {
+        const data = snap.data();
+        if (!data) return;
+
+        console.log("Snapshot update:", data);
+    
+        if (data.itemCount === 2 && data.totalPrice === 9.98) {
+          clearTimeout(timeout);
           unsubscribe();
           resolve();
-        };
+        }
       });
     });
+    
+
+    // await new Promise((resolve) => {
+    //   const unsubscribe = aliceCartRef.onSnapshot(snap => {
+    //     // If the function worked, these will be cart's final attributes.
+    //     const expectedCount = 2;
+    //     const expectedTotal = 9.98;
+  
+    //     // When the `itemCount`and `totalPrice` match the expectations for the
+    //     // two items added, the promise resolves, and the test passes.
+    //     // if (snap.exists && snap.data().itemCount === expectedCount && snap.data().totalPrice === expectedTotal) {
+
+    //     const data = snap.data();
+    //     if (!data) return;
+
+    //     if (data.itemCount === expectedCount && data.totalPrice === expectedTotal) {
+    //       unsubscribe();
+    //       resolve();
+    //     };
+
+
+    //     // if (snap.data().itemCount === expectedCount && snap.data().totalPrice == expectedTotal) {
+
+    //     //   // Call the function returned by `onSnapshot` to unsubscribe from updates
+    //     //   unsubscribe();
+    //     //   resolve();
+    //     // };
+    //   });
+    // });
   });
 });
 
